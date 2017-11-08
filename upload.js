@@ -1,16 +1,29 @@
-/* Upload beta-1.0.0 web上传插件 兼容IE8，IE9
- http://code.taobao.org/p/lib-common/src/common/upload.js  
+/* Upload 1.0.0 web上传插件 兼容IE8，IE9
+https://github.com/aqa365/JSUpload
  Date:2017-08-22 By 远方。 
  ---------------------------------
 
  var upload = new Upload( {
 	el:selector , // 任意元素
-	url:"",
-	param:""
-	done:function
-	..
+	url:"",       // 服务器上传地址
+	param:"" ,    // 上传参数
+	done:function // 上传完成时
+
+	.. 选填
+				
+	name : string // name属性 若为undefined 则以 el 的为准				
+	onActionExecuting: fun //上传执行前 若结果为false则立即终止
+		
+	fileSize:int // 上传大小 以kb为单位
+	fileCount:int // 单次上传数量
+				
+	fileType:string // 英文逗号分隔 。 所有类型：*.*  指定类型: *.jpg,*.png,*.jpeg,*.mp4
+	single:boolean // 若为true每次只能上传一个文件
+	singleUpload:boolean // 若为true 则一个一个的上传(一个文件一个请求)，否则，批量上传
+
+	zip:undefined // 在指定图片格式为 image/jpeg 或 image/webp的情况下，可以从 0 到 1 的区间内选择图片的质量（压缩）
+
  } )
-	
 
  */
 ( function( window , fun ){
@@ -34,37 +47,7 @@
 			return this.init( params );
 
 		},
-		eventChange = function( file ){
-
-			this.files = getFiles( file );
-
-			if( !this.validate() ) return false;
-
-			this.request();
-
-		},
-
-		// 验证扩展名
-		validateFileType = function( ext ){
-
-			if( !this.params.fileType ) return true;
-
-			var fileTypes = this.params.fileType.split( ',' );
-
-			for( var i in fileTypes ){
-
-				var item = fileTypes[ i ].split( '.' )[ 1 ].toLowerCase();
-
-				if( item == '*' ) return true;
-
-				if( item != ext.toLowerCase() ) return false;
-
-			} 
-
-			return true;
-
-		},
-
+		// 获取 input file 的文件
 		getFiles = function( e ){
 
 			// ie 8 、9
@@ -72,7 +55,7 @@
 
 				try{
 
-					var fso = new ActiveXObject("Scripting.FileSystemObject");
+					var fso = new ActiveXObject( "Scripting.FileSystemObject" );
 
 				}
 				catch( ex ){
@@ -92,73 +75,137 @@
 			}
 			
 
-		},
-		// 创建form
-		createForm = function(){
-
-			$( '[upload-form-' +  this.params.name + ']' ).remove();
-
-			//accept="image/*"  （谷歌浏览器bug，导致选择文件加载过慢的问题） 必须以一下方式 
-            //accept="image/gif,image/jpg,image/png" 
-            var form = '<form method="post" style="display:none" upload-form-' + this.params.name + ' enctype="multipart/form-data" >';
-            form += '<input type="file" accept="image/jpg,image/png,image/jpeg" upload-file-' + this.params.name + ' name="' + this.params.name + '" ' + ( this.params.single ? '' : 'multiple' ) + ' />';
-            form += '</form>';
-
-            var that = this;
-
-            var $form = $( form ).appendTo( $( 'body' ) );
-
-            $( '[type=file]' , $form ).bind( 'change' , function(){
-
-            	eventChange.call( that , this );
-
-            } ).click();
+		}
+		
 
 
+	Upload.fn = Upload.prototype = {
+		constructor:Upload,
 
-		},
+		init:function( params ){
 
-		// h5 
-		formDataRequest = function(){
+			this.params = { 
+
+				el : undefined , 
+
+				name : params[ name ] || $( params.el ).attr( 'name' ) || 'upload' ,
+
+				url : undefined ,
+
+				param : undefined ,
+
+				onActionExecuting : undefined , 
+
+				done : undefined ,  
+
+				fileSize : undefined ,
+
+				fileCount : undefined ,
+
+				fileType : '*.*' ,
+
+				single : false , 
+
+				singleUpload : false,
+
+				zip: undefined
+
+			};
+
+			if( !params )
+				return this;
+
+			if( !params[ 'el' ] )
+				throw new Error( 'element is not defined.' );
+
+			if( !params[ 'url' ] )
+				throw new Error( 'service url is not defined.' );
+
+			for( var key in params ){
+
+				this.params[ key ] = params[ key ];
+
+			}
+
+			this.createCanvas();
 
 			var that = this;
 
-			var formData = new FormData();
+			$( this.params.el ).bind( 'click' , function(){
 
-	        $.each( this.files , function ( i ) {
+				that.createForm();
 
-	            formData.append( that.params.name , that.files[ i ] );
+			} )
 
-	        })
+		},	
+		request:function(){
+			if( this.params.onActionExecuting )
+				if( !this.params.onActionExecuting.call( this ) )
+					return;
 
-			$.ajax({
-	            url: this.params.url,
-	            type: 'POST',
-	            data: formData,
-	            async: true,
-	            cache: false,
-	            contentType: false,
-	            processData: false,
-	            dataType: "json",
-	            success: function ( data ) {
+			if ( this.isIE( 8 ) || this.isIE( 9 ) ){
 
-	            	if( that.params.done )
-	                	that.params.done.call( that , data );
-	                else
-	                	console.log( data );
+				this.submitRequest( this );
 
-	            },
-	            error: function ( errorData ) {
+			}else{
 
-	            	console.log( errorData );
+				var formData = new FormData();
+				var that = this;
+							
+				if( !( this.singleUpload || this.isZip() ) ){
+					this.eachFile( function(){
+						console.log( 'aa' )
+						formData.append( that.params.name , this );
+					} );
+					
+					this.formDataRequest( formData );
+					return;
+				}
+				// one request , one file
+				this.eachFile( function(){
+					
+					if( that.isZip() ){	
+						var localPreviewUrl = that.getLocalPreviewUrl( this );
+						that.zipImg( localPreviewUrl );
+						return;
+					}
 
-	            }
-        	});
+					formData.append( that.params.name , this );
+					that.formDataRequest( formData );
+
+				} )
+			
+			}
 
 		},
+		formDataRequest : function( formData ){
+			var that = this;
+		
+			$.ajax({
+				url: this.params.url,
+				type: 'POST',
+				data: formData,
+				async: true,
+				cache: false,
+				contentType: false,
+				processData: false,
+				dataType: "json",
+				success: function ( data ) {
 
-		// ie
-		submitRequest = function(){
+					if( that.params.done )
+						that.params.done.call( that , data );
+					else
+						console.log( data );
+				},
+				error: function ( errorData ) {
+					console.log( errorData );
+				}
+			});
+
+		},
+		submitRequest : function(){
+			
+			var that = this;
 
 			$( '[name=upload-iframe-' + this.params.name + ']' ).remove();
 
@@ -178,7 +225,10 @@
 
 				var data = $( this ).contents().find( 'body' ).text();
 
-				console.log( data );
+				if( that.params.done )
+					that.params.done.call( that , eval( '(' + data + ')' ) );
+				else
+					console.log( data );
 
 				//alert( data );
 
@@ -188,12 +238,8 @@
 
 				var that = this;
 
-				// var $dialog = $( '<div style="ZOOM: 1; TOP: 150px; VISIBILITY: visible;top: 150px;left: 50%;margin-left: -300px;width: 520px;position: absolute;z-index: 10001;padding: 30px 40px 34px;-moz-border-radius: 5px;-webkit-border-radius: 5px;border-radius: 5px;-moz-box-shadow: 0 0 10px rgba(0, 0, 0, .4);-webkit-box-shadow: 0 0 10px rgba(0, 0, 0, .4);-box-shadow: 0 0 10px rgba(0, 0, 0, .4);background-color: #FFF;"></div>' ).appendTo( 'body' )
-				// var $shade = $( '<div class="reveal-modal-bg" style="display: block; cursor: pointer;position: fixed;height: 100%;width: 100%;z-index: 10000;top: 0;left: 0;background: rgba(00, 00, 00, 0.8);filter:progid:DXImageTransform.Microsoft.gradient(startColorstr=#cc000000,endColorstr=#cc000000)"></div>' ).appendTo( 'body' );
-				// var $dialogForm = $( '[upload-form-' + this.params.name + ']' ).appendTo( $dialog ).show();
-			    // $( 'input' , $dialogForm ).css( { top : '-999px' , position : 'fixed' } );
 				$form.append( '<input type="submit" value="立即上传" >' );
-
+				
 				$( '[type=submit]' , $form ).bind( 'click' , function(){
 
 					// 必须加上此事件
@@ -214,172 +260,178 @@
 				$( '[type=submit]' , $form ).click();
 
 			}
-		  
-		}
-
-
-
-	Upload.fn = Upload.prototype = {
-		constructor:Upload,
-
-		/*
-			params:{
-				// main
-				el:selector //选择器，可以是任何的元素
-				
-				name : string // name属性 若为undefined 则以 el 的为准
-
-				url:string // 服务器上传地址
-
-				param:object // 上传参数
-				
-				onActionExecuting: fun //上传执行前 若结果为false则立即终止
-
-				done:fun // 上传完成时
 			
-				// properties
-				
-				fileSize:int // 上传大小 以kb为单位
-				fileCount:int // 单次上传数量
-				
-
-				fileType:string // 英文逗号分隔 。 所有类型：*.*  指定类型: *.jpg,*.png,*.jpeg,*.mp4
-
-				single:boolean // 若为true每次只能上传一个文件
-				singleUpload:boolean // 若为true 则一个一个的上传(一个文件一个请求)，否则，批量上传
-			}
-		*/
-		init:function( params ){
-
-			this.params = { 
-
-				el : undefined , 
-
-				name : params[ name ] || $( params.el ).attr( 'name' ) ,
-
-				url : undefined ,
-
-				param : undefined ,
-
-				onActionExecuting : undefined , 
-
-				done : undefined ,  
-
-				fileSize : undefined ,
-
-				fileCount : undefined ,
-
-				fileType : '*.*' ,
-
-				single : false , 
-
-				singleUpload : false
-
-			};
-
-			if( !params )
-				return this;
-
-			if( !params[ 'el' ] )
-				throw new Error( 'element is not defined.' );
-
-			if( !params[ 'url' ] )
-				throw new Error( 'service url is not defined.' );
-
-			for( var key in params ){
-
-				this.params[ key ] = params[ key ];
-
-			}
-
-			var that = this;
-
-			$( this.params.el ).bind( 'click' , function(){
-
-				createForm.call( that );
-
-			} )
-
-		},
-
-		validate:function(){
-
-			// 数量
-			if( this.params.fileCount && this.files.length > this.params.fileCount ){
-
-				alert( '你单次只能上传' + this.params.fileCount + '个文件' );
-
-				return false;
-
-			}
-
-			for( var i = 0; i < this.files.length; i++ ){
-
-				var item = this.files[ i ];
-
-            	var fileType = item.name.substring( item.name.lastIndexOf( '.' ) + 1 );
-
-            	// 扩展名
-            	if( !validateFileType.call( this , fileType ) ){
-
-            		alert( '文件类型错误，您只能上传：{ ' + this.params.fileType + ' }的文件' );
-
-            		return false;
-
-            	}       
-
-            	// 文件大小
-            	var fileSize = item.size / 1024; 
-
-	            if ( this.params.fileSize && fileSize > this.params.fileSize ) {
-
-	            	alert( '文件' + item.name + '的大小不可超过' + this.params.fileCount + 'KB' );
-
-	            	return false;
-
-	            }     		
-
-			}
-
-			return true;
-
-		},
-
-		// 获取本地预览地址
-		// return [] || string
-		getLocalPreviewUrl:function( index ){
-
-			if ( index ) {
-				// TODO
-
-			}
-
-			// TODO
-
-		},
-
-		request:function(){
-
-			if( this.onActionExecuting )
-				if( !this.onActionExecuting.call( this ) )
-					return;
-
-			if (navigator.userAgent.indexOf("MSIE 8") >= 1 || navigator.userAgent.indexOf("MSIE 9") >= 1 ){
-
-				submitRequest.call( this );
-
-			}else{
-
-				formDataRequest.call( this );
-
-			}
-
-
 		}
 
 	}
 
-	Upload.fn.init.prototype = Upload.fn;
+	Upload.fn.extend = function(){
+		
+		if( typeof arguments[ 0 ] === 'object' ){
+
+			for (var key in arguments[ 0 ]) {
+				
+				Upload.fn[ key ] = arguments[ 0 ][ key ];
+
+			}
+
+		}
+	}
+
+	Upload.fn.extend( {
+
+		createForm : function(){
+
+			$( '[upload-form-' +  this.params.name + ']' ).remove();
+			
+			//accept="image/*"  （谷歌浏览器bug，导致选择文件加载过慢的问题） 必须以一下方式 
+			//accept="image/gif,image/jpg,image/png" 
+			var form = '<form method="post" style="display:none" upload-form-' + this.params.name + ' enctype="multipart/form-data" >';
+			form += '<input type="file" accept="image/jpg,image/png,image/jpeg" upload-file-' + this.params.name + ' name="' + this.params.name + '" ' + ( this.params.single ? '' : 'multiple' ) + ' />';
+			form += '</form>';
+
+			var that = this;
+			var $form = $( form ).appendTo( $( 'body' ) );
+			$( '[type=file]' , $form ).bind( 'change' , function(){ that.change( this ); } ).click();
+
+		},
+		createCanvas : function(){
+
+			if( !this.isZip() ) return;
+
+			var canvas = $( '#canvas_zip' );
+			if( canvas.length <= 0 ){
+				$( '<div><canvas id="canvas_zip" style="margin: 0 auto; display: none; max-width: 656px; max-height: 310px;z-index:87" ></canvas></div>' ).appendTo( $( 'body' ) );
+				canvas =  $( '#canvas_zip' );
+			}
+
+			this.canvas = canvas.get(0);
+			this.canvas_context = this.canvas.getContext("2d");
+
+		},
+		change : function( e ){
+			this.files = getFiles( e );			
+			if( !this.validate() ) return false;
+			this.request();
+		},
+		validate : function(){
+
+			if( !this.validateFileCount() ) return false;
+
+			else if( !this.validateFileSize() ) return false;
+
+			else if( !this.validateFileType() ) return false;
+
+			return true;
+
+		},
+		validateFileCount : function(){
+			if( this.params.fileCount && this.files.length > this.params.fileCount ){
+				alert( '你单次只能上传' + this.params.fileCount + '个文件' );
+				return false;
+			}
+			return true;
+		},
+		validateFileSize : function( size_kb ){
+
+			// 启用压缩后，若sizeKb 为 undefined 则跳过第一次无压缩验证
+			if( this.isZip() && !size_kb ) return true;
+
+			else if( size_kb  ){
+				return size_kb > this.params.fileSize;
+			}
+
+			var result = true;
+			var that = this;
+
+			this.eachFile( function( item ){
+				var fileSize = item.size / 1024; 		
+				if ( that.params.fileSize && fileSize > that.params.fileSize ) {
+					alert( '文件' + item.name + '的大小不可超过' + that.params.fileCount + 'KB' );
+					return result = false;
+				}     		
+			} );
+
+			return result;
+
+		},
+		validateFileType : function(){
+
+			var result = true;
+			var that = this;
+			
+			this.eachFile( function( file ){
+
+				if( !that.params.fileType ) return true;			
+				var fileTypes = that.params.fileType.split( ',' );
+	
+				for( var i in fileTypes ){
+					var item = fileTypes[ i ].split( '.' )[ 1 ].toLowerCase();
+					if( item == '*' ) return true;
+					if( item == file.name.substring( file.name.lastIndexOf( '.' ) + 1 ).toLowerCase() ) return true;
+				} 
+				alert( '文件类型错误，您只能上传：{ ' + that.params.fileType + ' }的文件' );
+				return result = false;
+
+			} )
+
+			return result;
+
+		},
+		eachFile : function( callback ){
+			$.each( this.files , function(){ callback.call( this , this ) } );
+		},
+		getLocalPreviewUrl : function( file ){
+			
+			var url = window.URL.createObjectURL( file );;
+			if( !url )	url = file.value;			
+			return url;
+
+		},
+		toBlob : function( dataurl ){
+			var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+			bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+			while (n--) {
+				u8arr[n] = bstr.charCodeAt(n);
+			}
+		 	return new Blob([u8arr], { type: mime });
+		},
+		zipImg : function( localPreviewUrl ){
+			var canvasId = "#canvas_zip";
+			var that = this;
+
+			var img = new Image();
+			img.src = localPreviewUrl;
+			img.onload = function(){
+				$( canvasId ).attr( "width" , img.width );
+				$( canvasId ).attr( "height" , img.height );
+
+				that.canvas_context.drawImage(img, 0, 0);
+				var dataurl = that.canvas.toDataURL( "image/jpeg" , that.params.zip );
+
+				var blob = that.toBlob( dataurl );
+				console.log( blob.size/1024 );
+				if( that.validateFileSize( blob.size ) ){ // 是否压缩到了指定的范围内 ， 如果超出则文件太大	
+					alert( '文件' + item.name + '的大小不可超过' + that.params.fileCount + 'KB' );
+					return;
+				}
+
+				var formData = new FormData();
+				formData.append( that.params.name , blob , "canvas.jpeg" );
+				that.formDataRequest( formData );
+
+			}
+		},
+		isIE : function( version ){
+			var indexOf = navigator.userAgent.indexOf( "MSIE" + ( version ? " " + version : "" ) );
+			return indexOf >= 1;
+		},
+		isZip : function (){
+			return  this.params[ 'zip' ] && ( !this.isIE(8) ) && ( !this.isIE(9) );
+		}
+
+	} )
+
 
 	return Upload;
 
