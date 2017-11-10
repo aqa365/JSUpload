@@ -22,6 +22,7 @@ https://github.com/aqa365/JSUpload
 	singleUpload:boolean // 若为true 则一个一个的上传(一个文件一个请求)，否则，批量上传
 
 	zip:undefined // 在指定图片格式为 image/jpeg 或 image/webp的情况下，可以从 0 到 1 的区间内选择图片的质量（压缩）
+	zipFilterSize:kb // 文件超过多少kb时开启压缩 
 
  } )
 
@@ -106,9 +107,11 @@ https://github.com/aqa365/JSUpload
 
 				single : false , 
 
-				singleUpload : false,
+				singleUpload : true,
 
-				zip: undefined
+				zip : undefined,
+
+				zipFilterSize : 0
 
 			};
 
@@ -149,27 +152,26 @@ https://github.com/aqa365/JSUpload
 
 			}else{
 
-				var formData = new FormData();
 				var that = this;
 							
-				if( !( this.singleUpload || this.isZip() ) ){
+				if( !this.params.singleUpload ){
+					var formData = new FormData();
 					this.eachFile( function(){
-						console.log( 'aa' )
 						formData.append( that.params.name , this );
 					} );
 					
 					this.formDataRequest( formData );
 					return;
 				}
+
 				// one request , one file
 				this.eachFile( function(){
-					
-					if( that.isZip() ){	
+					if( that.isZip( this.size / 1024 ) ){				
 						var localPreviewUrl = that.getLocalPreviewUrl( this );
 						that.zipImg( localPreviewUrl );
 						return;
 					}
-
+					var formData = new FormData();
 					formData.append( that.params.name , this );
 					that.formDataRequest( formData );
 
@@ -180,7 +182,6 @@ https://github.com/aqa365/JSUpload
 		},
 		formDataRequest : function( formData ){
 			var that = this;
-		
 			$.ajax({
 				url: this.params.url,
 				type: 'POST',
@@ -332,14 +333,14 @@ https://github.com/aqa365/JSUpload
 			}
 			return true;
 		},
-		validateFileSize : function( size_kb ){
+		validateFileSize : function(){
 
 			// 启用压缩后，若sizeKb 为 undefined 则跳过第一次无压缩验证
-			if( this.isZip() && !size_kb ) return true;
+			// if( this.isZip() && !size_kb ) return true;
 
-			else if( size_kb  ){
-				return size_kb > this.params.fileSize;
-			}
+			// else if( size_kb  ){
+			// 	return size_kb > this.params.fileSize;
+			// }
 
 			var result = true;
 			var that = this;
@@ -347,7 +348,7 @@ https://github.com/aqa365/JSUpload
 			this.eachFile( function( item ){
 				var fileSize = item.size / 1024; 		
 				if ( that.params.fileSize && fileSize > that.params.fileSize ) {
-					alert( '文件' + item.name + '的大小不可超过' + that.params.fileCount + 'KB' );
+					alert( '文件：' + item.name + '的大小不可超过' + that.params.fileSize / 1024 + 'M' );
 					return result = false;
 				}     		
 			} );
@@ -410,11 +411,11 @@ https://github.com/aqa365/JSUpload
 				var dataurl = that.canvas.toDataURL( "image/jpeg" , that.params.zip );
 
 				var blob = that.toBlob( dataurl );
-				console.log( blob.size/1024 );
-				if( that.validateFileSize( blob.size ) ){ // 是否压缩到了指定的范围内 ， 如果超出则文件太大	
-					alert( '文件' + item.name + '的大小不可超过' + that.params.fileCount + 'KB' );
-					return;
-				}
+				// console.log( blob.size/1024 );
+				// if( that.validateFileSize( blob.size ) ){ // 是否压缩到了指定的范围内 ， 如果超出则文件太大	
+				// 	alert( '文件' + item.name + '的大小不可超过' + that.params.fileCount + 'KB' );
+				// 	return;
+				// }
 
 				var formData = new FormData();
 				formData.append( that.params.name , blob , "canvas.jpeg" );
@@ -426,8 +427,12 @@ https://github.com/aqa365/JSUpload
 			var indexOf = navigator.userAgent.indexOf( "MSIE" + ( version ? " " + version : "" ) );
 			return indexOf >= 1;
 		},
-		isZip : function (){
-			return  this.params[ 'zip' ] && ( !this.isIE(8) ) && ( !this.isIE(9) );
+		isZip : function ( file_size_kb ){
+			var result = this.params[ 'zip' ] && ( !this.isIE(8) ) && ( !this.isIE(9) );
+			if( file_size_kb )
+				return result && file_size_kb > this.params.zipFilterSize;
+
+			return result;
 		}
 
 	} )
