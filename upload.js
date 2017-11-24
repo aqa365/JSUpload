@@ -3,6 +3,9 @@ https://github.com/aqa365/JSUpload
  Date:2017-08-22 By 远方。 
  ---------------------------------
 
+ 除el属性外，其余元素均可动态调配
+ upload.params.除el外的任意属性
+
  var upload = new Upload( {
 	el:selector , // 任意元素
 	url:"",       // 服务器上传地址
@@ -15,14 +18,16 @@ https://github.com/aqa365/JSUpload
 	onActionExecuting: fun //上传执行前 若结果为false则立即终止
 		
 	fileSize:int // 上传大小 以kb为单位
-	fileCount:int // 单次上传数量
-				
+	fileCount:int // 单次上传数量				
 	fileType:string // 英文逗号分隔 。 所有类型：*.*  指定类型: *.jpg,*.png,*.jpeg,*.mp4
+
 	single:boolean // 若为true每次只能上传一个文件
 	singleUpload:boolean // 若为true 则一个一个的上传(一个文件一个请求)，否则，批量上传
 
 	zip:undefined // 在指定图片格式为 image/jpeg 或 image/webp的情况下，可以从 0 到 1 的区间内选择图片的质量（压缩）
 	zipFilterSize:kb // 文件超过多少kb时开启压缩 
+
+	disable:false // 是否禁用
 
  } )
 
@@ -95,9 +100,11 @@ https://github.com/aqa365/JSUpload
 
 				param : undefined ,
 
+
 				onActionExecuting : undefined , 
 
 				done : undefined ,  
+
 
 				fileSize : undefined ,
 
@@ -105,13 +112,18 @@ https://github.com/aqa365/JSUpload
 
 				fileType : '*.*' ,
 
+
 				single : false , 
 
 				singleUpload : true,
 
+
 				zip : undefined,
 
-				zipFilterSize : 0
+				zipFilterSize : 0,
+
+				disable : false
+
 
 			};
 
@@ -135,6 +147,8 @@ https://github.com/aqa365/JSUpload
 			var that = this;
 
 			$( this.params.el ).bind( 'click' , function(){
+
+				if( that.params.disable ) return;
 
 				that.createForm();
 
