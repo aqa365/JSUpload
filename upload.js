@@ -206,13 +206,14 @@ https://github.com/aqa365/JSUpload
 				processData: false,
 				dataType: "json",
 				success: function ( data ) {
-
+					that.length -= 1 ;
 					if( that.params.done )
 						that.params.done.call( that , data );
 					else
 						console.log( data );
 				},
 				error: function ( errorData ) {
+					that.length -= 1 ;
 					console.log( errorData );
 				}
 			});
@@ -237,6 +238,8 @@ https://github.com/aqa365/JSUpload
 
 			// result
 			$iframe.bind( 'load' , function(){
+				
+				that.length -= 1 ;
 
 				var data = $( this ).contents().find( 'body' ).text();
 
@@ -244,9 +247,6 @@ https://github.com/aqa365/JSUpload
 					that.params.done.call( that , eval( '(' + data + ')' ) );
 				else
 					console.log( data );
-
-				//alert( data );
-
 			} )
 
 			if ( navigator.userAgent.indexOf("MSIE 8") >= 1 ){
@@ -325,7 +325,8 @@ https://github.com/aqa365/JSUpload
 
 		},
 		change : function( e ){
-			this.files = getFiles( e );			
+			this.files = getFiles( e );	
+			this.length = this.files.length;		
 			if( !this.validate() ) return false;
 			this.request();
 		},
